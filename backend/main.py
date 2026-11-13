@@ -1,3 +1,4 @@
+from services.groww import groww_broker
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -34,9 +35,14 @@ def read_root():
 # NEW: Secure Broker Status Endpoint
 @app.get("/api/status")
 def broker_status():
-    # We only check IF the username exists, we NEVER return the password to the frontend
-    is_configured = settings.GROWW_USERNAME is not None and settings.GROWW_USERNAME != "your_email@example.com"
-    return {"broker": "Groww", "configured": is_configured}
+    # Attempt to login using the service we just created
+    login_response = groww_broker.login()
+
+    return {
+        "broker": "Groww", 
+        "configured": groww_broker.is_logged_in,
+        "message": login_response["message"]
+    }
 
 # Get all trades
 @app.get("/trades", response_model=list[schemas.TradeResponse])
@@ -52,3 +58,8 @@ def create_trade(trade: schemas.TradeCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_trade)
     return db_trade
+
+# Get live market data for the dashboard
+@app.get("/api/market-data")
+def get_market_data():
+    return groww_broker.get_live_market_data()
