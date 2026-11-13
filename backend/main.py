@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 from database import engine, SessionLocal, Base
+from config import settings
 
 # This line creates the actual optionai.db file and tables
 Base.metadata.create_all(bind=engine)
@@ -30,11 +31,20 @@ def get_db():
 def read_root():
     return {"message": "OptionAI Backend is connected and running!"}
 
+# NEW: Secure Broker Status Endpoint
+@app.get("/api/status")
+def broker_status():
+    # We only check IF the username exists, we NEVER return the password to the frontend
+    is_configured = settings.GROWW_USERNAME is not None and settings.GROWW_USERNAME != "your_email@example.com"
+    return {"broker": "Groww", "configured": is_configured}
+
+# Get all trades
 @app.get("/trades", response_model=list[schemas.TradeResponse])
 def get_trades(db: Session = Depends(get_db)):
     trades = db.query(models.TradeRecord).all()
     return trades
 
+# Create a new trade
 @app.post("/trades", response_model=schemas.TradeResponse)
 def create_trade(trade: schemas.TradeCreate, db: Session = Depends(get_db)):
     db_trade = models.TradeRecord(**trade.model_dump())
