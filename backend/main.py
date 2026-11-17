@@ -61,7 +61,10 @@ def get_ai_insight():
     if not nifty or not nifty.get("ltp"):
         return {"insight": "Waiting for live market data to generate AI insights..."}
 
-    # NEW: Advanced Quantitative Trader Prompt
+    if not settings.GEMINI_API_KEY:
+        return {"insight": "GEMINI_API_KEY is not configured in backend/.env"}
+
+    # Quantitative Trader Prompt
     prompt = f"""
     You are an elite Quantitative Options Trading Assistant. Analyze this live market data:
     - NIFTY 50: Price={nifty.get('ltp')}, RSI(14)={nifty.get('rsi_14')}, 9-EMA={nifty.get('ema_9')}
@@ -80,24 +83,39 @@ def get_ai_insight():
     Levels: Entry near [X], Target [Y], Stop Loss [Z]
     """
     
-    try:
-        # DIRECT REST API CALL
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        headers = {"Content-Type": "application/json"}
-        
-        response = requests.post(url, json=payload, headers=headers)
-        data = response.json()
-        
-        if response.status_code == 200:
-            insight = data['candidates'][0]['content']['parts'][0]['text']
-            return {"insight": insight.strip()}
-        else:
-            error_msg = data.get('error', {}).get('message', 'Unknown API Error')
-            return {"insight": f"Google API Error: {error_msg}"}
+    # Models to try (handles deprecated or overloaded models automatically)
+    candidate_models = []
+    for m in [settings.GEMINI_MODEL, "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-flash-latest"]:
+        if m and m not in candidate_models:
+            candidate_models.append(m)
+
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    headers = {"Content-Type": "application/json"}
+    
+    last_error = "Unknown API Error"
+    for model_name in candidate_models:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={settings.GEMINI_API_KEY}"
+            response = requests.post(url, json=payload, headers=headers, timeout=12)
+            data = response.json()
             
-    except Exception as e:
-        return {"insight": f"Request Failed: {str(e)}"}
+            if response.status_code == 200:
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    text_parts = [p.get("text", "") for p in parts if p.get("text") and not p.get("thought", False)]
+                    insight_text = "\n".join(text_parts).strip() if text_parts else (parts[0].get("text", "").strip() if parts else "")
+                    if insight_text:
+                        return {"insight": insight_text}
+                return {"insight": "AI generated an empty response. Please retry."}
+            else:
+                last_error = data.get("error", {}).get("message", f"HTTP {response.status_code}")
+                continue
+        except Exception as e:
+            last_error = str(e)
+            continue
+            
+    return {"insight": f"Google API Error: {last_error}"}
 
 # NEW: Trade Analytics Dashboard API
 @app.get("/api/trades/summary")

@@ -151,7 +151,7 @@ function App() {
         <h2 style={{ margin: '0 0 10px 0', fontSize: '16px', color: '#818cf8', display: 'flex', alignItems: 'center', gap: '8px' }}>
           ✨ AI Trade Assistant
         </h2>
-        <p style={{ margin: 0, fontSize: '15px', color: '#c7d2fe', lineHeight: '1.5' }}>
+        <p style={{ margin: 0, fontSize: '15px', color: '#c7d2fe', lineHeight: '1.6', whiteSpace: 'pre-line' }}>
           {aiInsight}
         </p>
       </div>
