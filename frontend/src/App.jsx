@@ -5,6 +5,10 @@ function App() {
   const [brokerStatus, setBrokerStatus] = useState(null)
   const [connectionError, setConnectionError] = useState(false)
   
+  // Naye State Variables
+  const [engineStatus, setEngineStatus] = useState(null)
+  const [aiInsight, setAiInsight] = useState("AI is analyzing market structure...")
+  
   const [tradeForm, setTradeForm] = useState({
     underlying: 'NIFTY 50',
     strategy: 'Long Call',
@@ -16,6 +20,7 @@ function App() {
   const [tradeHistory, setTradeHistory] = useState([])
 
   const fetchSystemData = () => {
+    // 1. Fetch Market Data
     fetch('http://127.0.0.1:8000/api/market-data')
       .then(response => {
         if (!response.ok) throw new Error("Network response was not ok")
@@ -27,10 +32,23 @@ function App() {
       })
       .catch(error => setConnectionError(true))
 
+    // 2. Fetch Broker Status
     fetch('http://127.0.0.1:8000/api/status')
       .then(response => response.json())
       .then(data => setBrokerStatus(data))
       .catch(error => console.error(error))
+
+    // 3. Fetch Engine Status
+    fetch('http://127.0.0.1:8000/api/engine/status')
+      .then(response => response.json())
+      .then(data => setEngineStatus(data))
+      .catch(error => console.error('Error fetching engine status:', error))
+
+    // 4. Fetch Gemini AI Insights
+    fetch('http://127.0.0.1:8000/api/ai-insight')
+      .then(response => response.json())
+      .then(data => setAiInsight(data.insight))
+      .catch(error => console.error('Error fetching AI insight:', error))
   }
 
   const fetchTrades = () => {
@@ -43,7 +61,7 @@ function App() {
   useEffect(() => {
     fetchSystemData()
     fetchTrades()
-    const intervalId = setInterval(fetchSystemData, 15000) // Slowed to 15s to prevent Yahoo Finance rate limits
+    const intervalId = setInterval(fetchSystemData, 15000)
     return () => clearInterval(intervalId)
   }, [])
 
@@ -109,25 +127,6 @@ function App() {
   const winningTrades = closedTrades.filter(t => (t.pnl || 0) > 0).length
   const winRate = closedTrades.length > 0 ? Math.round((winningTrades / closedTrades.length) * 100) : 0
 
-  // NEW: Basic Rule-Based AI Insight Generation
-  const generateAIInsight = () => {
-    if (!marketData || !marketData.indices["NIFTY 50"].rsi_14) return "Analyzing market structure..."
-    
-    const rsi = marketData.indices["NIFTY 50"].rsi_14
-    const ltp = marketData.indices["NIFTY 50"].ltp
-    const ema = marketData.indices["NIFTY 50"].ema_9
-
-    let insight = ""
-    if (rsi > 70) {
-      insight = "🚨 NIFTY is currently OVERBOUGHT (RSI > 70). The upward momentum is stretched. Consider looking for Short/Put opportunities if price action shows rejection."
-    } else if (rsi < 30) {
-      insight = "🟢 NIFTY is currently OVERSOLD (RSI < 30). The downward momentum is stretched. Watch for a bounce or Long/Call setups upon reversal confirmation."
-    } else {
-      insight = `⚖️ NIFTY is in a NEUTRAL momentum zone (RSI: ${rsi}). Current price is ${ltp > ema ? 'above' : 'below'} the 9 EMA, indicating a short-term ${ltp > ema ? 'bullish' : 'bearish'} trend. Wait for high-probability setups at key support/resistance levels.`
-    }
-    return insight
-  }
-
   return (
     <div style={{ backgroundColor: '#0b0e14', color: '#d1d5db', minHeight: '100vh', padding: '20px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       
@@ -142,47 +141,45 @@ function App() {
             Market: <span style={{ color: marketData?.market_status === 'OPEN' ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>{marketData ? marketData.market_status : 'LOADING'}</span>
           </div>
           <div style={{ backgroundColor: '#151b24', padding: '6px 12px', borderRadius: '4px', border: '1px solid #1f2937' }}>
-            Engine: <span style={{ color: connectionError ? '#ef4444' : '#10b981', fontWeight: 'bold' }}>{connectionError ? 'DISCONNECTED' : 'ONLINE'}</span>
+            Engine: <span style={{ color: engineStatus?.status === 'ACTIVE' ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>{engineStatus?.status || 'DISCONNECTED'}</span>
           </div>
         </div>
       </div>
 
-      {/* NEW: AI TRADING ASSISTANT PANEL */}
+      {/* AI TRADING ASSISTANT PANEL */}
       <div style={{ backgroundColor: '#1e1b4b', padding: '20px', borderRadius: '8px', border: '1px solid #3730a3', marginBottom: '20px' }}>
         <h2 style={{ margin: '0 0 10px 0', fontSize: '16px', color: '#818cf8', display: 'flex', alignItems: 'center', gap: '8px' }}>
           ✨ AI Trade Assistant
         </h2>
         <p style={{ margin: 0, fontSize: '15px', color: '#c7d2fe', lineHeight: '1.5' }}>
-          {generateAIInsight()}
+          {aiInsight}
         </p>
       </div>
 
-      {/* MARKET OVERVIEW CARDS WITH TECHNICALS */}
+      {/* MARKET OVERVIEW CARDS */}
       {marketData ? (
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '20px' }}>
           <div style={{ backgroundColor: '#151b24', padding: '20px', borderRadius: '8px', border: '1px solid #1f2937', flex: '1', minWidth: '250px' }}>
             <h2 style={{ margin: '0 0 10px 0', fontSize: '16px', color: '#9ca3af' }}>NIFTY 50</h2>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', marginBottom: '5px' }}>{formatNumber(marketData.indices["NIFTY 50"].ltp)}</div>
-            <div style={{ display: 'flex', gap: '10px', fontSize: '15px', fontWeight: '500', color: marketData.indices["NIFTY 50"].change >= 0 ? '#10b981' : '#ef4444', marginBottom: '15px' }}>
-              <span>{marketData.indices["NIFTY 50"].change >= 0 ? '+' : ''}{formatNumber(marketData.indices["NIFTY 50"].change)}</span>
+            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', marginBottom: '5px' }}>{formatNumber(marketData.indices["NIFTY 50"]?.ltp)}</div>
+            <div style={{ display: 'flex', gap: '10px', fontSize: '15px', fontWeight: '500', color: marketData.indices["NIFTY 50"]?.change >= 0 ? '#10b981' : '#ef4444', marginBottom: '15px' }}>
+              <span>{marketData.indices["NIFTY 50"]?.change >= 0 ? '+' : ''}{formatNumber(marketData.indices["NIFTY 50"]?.change)}</span>
             </div>
-            {/* NEW: Technical Indicators Display */}
             <div style={{ display: 'flex', gap: '20px', borderTop: '1px solid #374151', paddingTop: '10px', fontSize: '13px', color: '#9ca3af' }}>
-              <div>RSI (14): <span style={{ color: '#fff', fontWeight: 'bold' }}>{marketData.indices["NIFTY 50"].rsi_14 || '-'}</span></div>
-              <div>EMA (9): <span style={{ color: '#fff', fontWeight: 'bold' }}>{marketData.indices["NIFTY 50"].ema_9 || '-'}</span></div>
+              <div>RSI (14): <span style={{ color: '#fff', fontWeight: 'bold' }}>{marketData.indices["NIFTY 50"]?.rsi_14 || '-'}</span></div>
+              <div>EMA (9): <span style={{ color: '#fff', fontWeight: 'bold' }}>{marketData.indices["NIFTY 50"]?.ema_9 || '-'}</span></div>
             </div>
           </div>
 
           <div style={{ backgroundColor: '#151b24', padding: '20px', borderRadius: '8px', border: '1px solid #1f2937', flex: '1', minWidth: '250px' }}>
             <h2 style={{ margin: '0 0 10px 0', fontSize: '16px', color: '#9ca3af' }}>NIFTY BANK</h2>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', marginBottom: '5px' }}>{formatNumber(marketData.indices["NIFTY BANK"].ltp)}</div>
-            <div style={{ display: 'flex', gap: '10px', fontSize: '15px', fontWeight: '500', color: marketData.indices["NIFTY BANK"].change >= 0 ? '#10b981' : '#ef4444', marginBottom: '15px' }}>
-              <span>{marketData.indices["NIFTY BANK"].change >= 0 ? '+' : ''}{formatNumber(marketData.indices["NIFTY BANK"].change)}</span>
+            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', marginBottom: '5px' }}>{formatNumber(marketData.indices["NIFTY BANK"]?.ltp)}</div>
+            <div style={{ display: 'flex', gap: '10px', fontSize: '15px', fontWeight: '500', color: marketData.indices["NIFTY BANK"]?.change >= 0 ? '#10b981' : '#ef4444', marginBottom: '15px' }}>
+              <span>{marketData.indices["NIFTY BANK"]?.change >= 0 ? '+' : ''}{formatNumber(marketData.indices["NIFTY BANK"]?.change)}</span>
             </div>
-            {/* NEW: Technical Indicators Display */}
             <div style={{ display: 'flex', gap: '20px', borderTop: '1px solid #374151', paddingTop: '10px', fontSize: '13px', color: '#9ca3af' }}>
-              <div>RSI (14): <span style={{ color: '#fff', fontWeight: 'bold' }}>{marketData.indices["NIFTY BANK"].rsi_14 || '-'}</span></div>
-              <div>EMA (9): <span style={{ color: '#fff', fontWeight: 'bold' }}>{marketData.indices["NIFTY BANK"].ema_9 || '-'}</span></div>
+              <div>RSI (14): <span style={{ color: '#fff', fontWeight: 'bold' }}>{marketData.indices["NIFTY BANK"]?.rsi_14 || '-'}</span></div>
+              <div>EMA (9): <span style={{ color: '#fff', fontWeight: 'bold' }}>{marketData.indices["NIFTY BANK"]?.ema_9 || '-'}</span></div>
             </div>
           </div>
         </div>
@@ -190,10 +187,9 @@ function App() {
         <div style={{ textAlign: 'center', padding: '50px', color: '#6b7280' }}>Loading market data...</div>
       )}
 
-      {/* TRADE ENTRY FORM AND LEDGER CONTAINER */}
+      {/* TRADE ENTRY FORM AND LEDGER */}
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         
-        {/* LEFT COLUMN: TRADE ENTRY FORM */}
         <div style={{ backgroundColor: '#151b24', padding: '25px', borderRadius: '8px', border: '1px solid #1f2937', flex: '1', minWidth: '350px' }}>
           <h2 style={{ margin: '0 0 20px 0', fontSize: '18px', color: '#ffffff', borderBottom: '1px solid #1f2937', paddingBottom: '10px' }}>Manual Trade Entry</h2>
           <form onSubmit={submitTrade} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -235,13 +231,10 @@ function App() {
           </form>
         </div>
 
-        {/* RIGHT COLUMN: TRADE LEDGER & ANALYTICS */}
         <div style={{ backgroundColor: '#151b24', padding: '25px', borderRadius: '8px', border: '1px solid #1f2937', flex: '2', minWidth: '400px', overflowX: 'auto' }}>
-          
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1f2937', paddingBottom: '15px', marginBottom: '20px' }}>
             <h2 style={{ margin: '0', fontSize: '18px', color: '#ffffff' }}>Trade Ledger</h2>
             
-            {/* Analytics Ribbon */}
             <div style={{ display: 'flex', gap: '15px', fontSize: '13px' }}>
               <div style={{ backgroundColor: '#0b0e14', padding: '6px 12px', borderRadius: '4px', border: '1px solid #374151' }}>
                 Closed: <span style={{ color: '#fff', fontWeight: 'bold' }}>{closedTrades.length}</span>
@@ -304,7 +297,6 @@ function App() {
             </tbody>
           </table>
         </div>
-
       </div>
     </div>
   )
